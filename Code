@@ -1,1 +1,150 @@
+pragma solidity ^0.5.17;
 
+
+//Registration Smart contract
+
+contract Registration {
+    
+    address public FDA; //Ethereum address of the FDA
+    address public LocalRegulator; //Ethereum address of local regulator
+    mapping(address => bool) public manufacturer; //a mapping that lists all authorized manufacturers
+    mapping(address => bool) public storagecenter; //a mapping for authorized largescale storage centers
+    mapping(address => bool) public distributor; //a mapping that lists all authorized distributors
+    mapping(address => bool) public healthcarecenter; //a mapping for all authorized healthcare centers
+
+    //Registration Events
+    
+    event RegistrationSCDeployer (address indexed FDA); //An event to show the address of the registration SC deployer
+
+    //Modifiers
+    
+    modifier onlyFDA() {
+        require(FDA == msg.sender, "Only the FDA is eligible to run this function");
+        _;
+    }
+    
+    modifier onlyLocalRegulator {
+        require(LocalRegulator == msg.sender , "Only the Local Regulator is eligible to run this function");
+        _;
+    }
+    
+    //Creating the contract constructor
+
+    constructor() public {
+        
+        FDA = msg.sender;
+        emit RegistrationSCDeployer(FDA);
+
+    }
+    
+    //Registration Functions
+    
+    function manufacturerRegistration (address user) public onlyFDA {
+        require(manufacturer[user] == false, "The user is already registered");
+        manufacturer[user] = true;
+        
+    }
+    
+        
+    function storagecenterRegistration (address user) public onlyLocalRegulator {
+        require(storagecenter[user] == false, "The user is already registered");
+        storagecenter[user] = true;
+    }
+    
+    function distributorRegistration (address user) public onlyLocalRegulator {
+        require(distributor[user] == false, "The user is already registered");
+        distributor[user] = true;
+    }
+
+    
+    function healthcarecenterRegistration (address user) public onlyLocalRegulator{
+        require(healthcarecenter[user] == false, "The user is already registered");
+        healthcarecenter[user] = true;
+    }
+    
+
+    
+}
+
+//Ordering Smart contract
+
+contract Ordering{
+    
+    //Declaring variables
+    
+    Registration public regcontract; //used to access variables and functions from the other contract
+    uint public MaxVaccineLotAmount; //The maximum amount of COVID-19 vaccine LOTs that the manufacturer can produce
+    uint public PlacedOrdersCounter = 0; //Used to ensure the ordered lots do not exceed the maximum
+    uint public PlacedOrderAmount; //Finds the individual amount of each order
+    mapping(address => bool) public OrderPriority; //A mapping for healthcarecenters that have priority in orders
+    mapping(address => bool) public signed; //A mapping used to track which entity has agreed to proceed with covid-19 vaccine delivery/ProductionSCDeployer
+    address[] public manufacturersArray;
+    address[] public distributorArray;
+    address[] public storagecenterArray;
+    address[] public healthcarecenterArray;
+    enum  ConsensusState  {NotReached, Reached}
+    ConsensusState public Consensus; 
+
+
+    
+    //Ordering events
+
+    event OrderingSCDeployer (address indexed manufacturer, uint _MaxVaccineLotAmount); //An event to show the address of the ordering SC deployer and the MaxVaccineLotAmount
+    event consensusState (address indexed _address, ConsensusState _Consensus); //An event declaring the readiness of the manufacturer 
+    event placedorders(address indexed healthcarecenter, uint placedorder);
+
+    //Modifiers
+    
+    modifier onlyhealthcarecenter{
+
+    require(regcontract.healthcarecenter(msg.sender), "Only the healthcarecenter is allowed to execute this function");
+    _;
+    }
+
+    //Constructor
+    
+    constructor(address RegistrationSCaddress, uint _MaxVaccineLotAmount) public{
+        
+        regcontract = Registration(RegistrationSCaddress);
+        MaxVaccineLotAmount = _MaxVaccineLotAmount;
+        emit OrderingSCDeployer(msg.sender, MaxVaccineLotAmount);
+    } 
+    
+    //Functions
+    function PlaceOrder(uint _PlacedOrder) public onlyhealthcarecenter{
+        require(_PlacedOrder + PlacedOrdersCounter <= MaxVaccineLotAmount, "The specified amount exceeds the capacity of the manufacturer");
+        PlacedOrdersCounter += _PlacedOrder;
+        OrderPriority[msg.sender] = true;
+        
+    }
+    
+    function OrderingAgreement() public {
+    require (regcontract.manufacturer(msg.sender) || regcontract.storagecenter(msg.sender) || regcontract.distributor(msg.sender) || (regcontract.healthcarecenter(msg.sender) &&  OrderPriority[msg.sender]) , "Only authorized entities can execute this function"  );
+    require (!signed[msg.sender]);
+    require (PlacedOrdersCounter >= MaxVaccineLotAmount*80/100); //I'm assuming here that the capacity of the manufacturer should be at least used by 80%
+    require (Consensus == ConsensusState.NotReached, "Consensus already reached to execute the manufacturing of the given orders" );
+    
+    
+    signed[msg.sender] = true;
+    
+    
+     if(regcontract.manufacturer(msg.sender)) {   // if else statement
+         manufacturersArray.push(msg.sender);
+      } else if(regcontract.storagecenter(msg.sender)){
+         storagecenterArray.push(msg.sender);
+      } else if(regcontract.distributor(msg.sender)){
+         distributorArray.push(msg.sender);
+      } else {
+         healthcarecenterArray.push(msg.sender);
+      }
+      
+     if(healthcarecenterArray.length*distributorArray.length*storagecenterArray.length*manufacturersArray.length > 0){ 
+         Consensus = ConsensusState.Reached;
+     }
+      
+      
+    emit consensusState (msg.sender, Consensus);
+    
+    }
+
+}
