@@ -72,10 +72,12 @@ contract Ordering{
     
     //Declaring variables
     
-    Registration public regcontract; //used to access variables and functions from the other contract
+    Registration public regcontract; //used to access variables and functions from the registration contract
     uint public MaxVaccineLotAmount; //The maximum amount of COVID-19 vaccine LOTs that the manufacturer can produce
     uint public PlacedOrdersCounter = 0; //Used to ensure the ordered lots do not exceed the maximum
     uint public PlacedOrderAmount; //Finds the individual amount of each order
+    uint VaccineLotAmount; //The amount of COVID-19 vaccines to be produced, should be equal to PlacedOrdersCounter
+    uint OrderNumber; //Used by the manufacturer to distinguish the different orders
     mapping(address => bool) public OrderPriority; //A mapping for healthcarecenters that have priority in orders
     mapping(address => bool) public signed; //A mapping used to track which entity has agreed to proceed with covid-19 vaccine delivery/ProductionSCDeployer
     address[] public manufacturersArray;
@@ -92,6 +94,7 @@ contract Ordering{
     event OrderingSCDeployer (address indexed manufacturer, uint _MaxVaccineLotAmount); //An event to show the address of the ordering SC deployer and the MaxVaccineLotAmount
     event consensusState (address indexed _address, ConsensusState _Consensus); //An event declaring the readiness of the manufacturer 
     event placedorders(address indexed healthcarecenter, uint placedorder);
+    event VaccineLotsManufactured(address indexed manufacturer, uint _ordernumber, uint _VaccineLotsProduced); //An event to confirm the manufacturing of the vaccine lots
 
     //Modifiers
     
@@ -118,7 +121,7 @@ contract Ordering{
     
     //Functions
     function PlaceOrder(uint _PlacedOrder) public onlyhealthcarecenter{
-        require(_PlacedOrder + PlacedOrdersCounter <= MaxVaccineLotAmount, "The specified amount exceeds the capacity of the manufacturer");
+        require(_PlacedOrder + PlacedOrdersCounter <= MaxVaccineLotAmount, "The specified amount exceeds the current capacity of the manufacturer");
         PlacedOrdersCounter += _PlacedOrder;
         OrderPriority[msg.sender] = true;
         
@@ -152,9 +155,11 @@ contract Ordering{
     
     }
     
-    function BeginManufacturing() public onlymanufacturer{
+    function BeginManufacturing(uint _ordernumber) public onlymanufacturer{
         require(Consensus == ConsensusState.Reached, "Manufacturing cannot be started because other entities have not agreed yet");
-        
+        OrderNumber = _ordernumber;
+        VaccineLotAmount = PlacedOrdersCounter;
+        emit VaccineLotsManufactured(msg.sender, OrderNumber, VaccineLotAmount);
     }
 
 }
@@ -164,7 +169,9 @@ contract Ordering{
 contract PoD{
     
     //Declaring variables
-    Ordering 
+    Ordering public ordContract; //used to access variables and functions from the ordering contract
+     
+    
     
 }
 
