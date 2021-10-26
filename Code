@@ -129,7 +129,7 @@ contract Ordering{
     }
     
     function OrderingAgreement() public {
-    require (regcontract.manufacturer(msg.sender) && PlacedOrdersCounter >= MaxVaccineLotAmount*80/100 || regcontract.storagecenter(msg.sender) || regcontract.distributor(msg.sender) || (regcontract.healthcarecenter(msg.sender) &&  OrderPriority[msg.sender]) , "Only authorized entities can execute this function"  );
+    require ((regcontract.manufacturer(msg.sender) && PlacedOrdersCounter >= MaxVaccineLotAmount*80/100) || regcontract.storagecenter(msg.sender) || regcontract.distributor(msg.sender) || (regcontract.healthcarecenter(msg.sender) &&  OrderPriority[msg.sender]) , "Only authorized entities can execute this function"  );
     require (!signed[msg.sender]);
     require (Consensus == ConsensusState.NotReached, "Consensus already reached to execute the manufacturing of the given orders" );
     
@@ -262,4 +262,18 @@ contract PoD{
     
     
 }
+
+
+//Proof of Consumption Smart Contract
+
+    //Declaring variables
+
+    //Events
+
+    //Modifiers
+
+    //Constructor
+
+    //Functions
+
 
