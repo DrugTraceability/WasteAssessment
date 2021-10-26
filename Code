@@ -100,6 +100,12 @@ contract Ordering{
     require(regcontract.healthcarecenter(msg.sender), "Only the healthcarecenter is allowed to execute this function");
     _;
     }
+    
+    modifier onlymanufacturer{
+
+    require(regcontract.manufacturer(msg.sender), "Only the manufacturer is allowed to execute this function");
+    _;
+    }
 
     //Constructor
     
@@ -119,12 +125,11 @@ contract Ordering{
     }
     
     function OrderingAgreement() public {
-    require (regcontract.manufacturer(msg.sender) || regcontract.storagecenter(msg.sender) || regcontract.distributor(msg.sender) || (regcontract.healthcarecenter(msg.sender) &&  OrderPriority[msg.sender]) , "Only authorized entities can execute this function"  );
+    require (regcontract.manufacturer(msg.sender) && PlacedOrdersCounter >= MaxVaccineLotAmount*80/100 || regcontract.storagecenter(msg.sender) || regcontract.distributor(msg.sender) || (regcontract.healthcarecenter(msg.sender) &&  OrderPriority[msg.sender]) , "Only authorized entities can execute this function"  );
     require (!signed[msg.sender]);
-    require (PlacedOrdersCounter >= MaxVaccineLotAmount*80/100); //I'm assuming here that the capacity of the manufacturer should be at least used by 80%
     require (Consensus == ConsensusState.NotReached, "Consensus already reached to execute the manufacturing of the given orders" );
     
-    
+
     signed[msg.sender] = true;
     
     
@@ -146,5 +151,20 @@ contract Ordering{
     emit consensusState (msg.sender, Consensus);
     
     }
+    
+    function BeginManufacturing() public onlymanufacturer{
+        require(Consensus == ConsensusState.Reached, "Manufacturing cannot be started because other entities have not agreed yet");
+        
+    }
 
 }
+
+//ProofOfDelivery Smart contract
+
+contract PoD{
+    
+    //Declaring variables
+    Ordering 
+    
+}
+
