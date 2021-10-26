@@ -76,8 +76,8 @@ contract Ordering{
     uint public MaxVaccineLotAmount; //The maximum amount of COVID-19 vaccine LOTs that the manufacturer can produce
     uint public PlacedOrdersCounter = 0; //Used to ensure the ordered lots do not exceed the maximum
     uint public PlacedOrderAmount; //Finds the individual amount of each order
-    uint VaccineLotAmount; //The amount of COVID-19 vaccines to be produced, should be equal to PlacedOrdersCounter
-    uint OrderNumber; //Used by the manufacturer to distinguish the different orders
+    uint public VaccineLotAmount; //The amount of COVID-19 vaccines to be produced, should be equal to PlacedOrdersCounter
+    uint public OrderNumber; //Used by the manufacturer to distinguish the different orders
     mapping(address => bool) public OrderPriority; //A mapping for healthcarecenters that have priority in orders
     mapping(address => bool) public signed; //A mapping used to track which entity has agreed to proceed with covid-19 vaccine delivery/ProductionSCDeployer
     address[] public manufacturersArray;
@@ -94,7 +94,7 @@ contract Ordering{
     event OrderingSCDeployer (address indexed manufacturer, uint _MaxVaccineLotAmount); //An event to show the address of the ordering SC deployer and the MaxVaccineLotAmount
     event consensusState (address indexed _address, ConsensusState _Consensus); //An event declaring the readiness of the manufacturer 
     event placedorder(address indexed healthcarecenter, uint placedorder);
-    event VaccineLotsManufactured(address indexed manufacturer, uint _ordernumber, uint _VaccineLotsProduced); //An event to confirm the manufacturing of the vaccine lots
+    event VaccineLotsManufactured(address indexed manufacturer, uint indexed _ordernumber, uint _VaccineLotsProduced); //An event to confirm the manufacturing of the vaccine lots
 
     //Modifiers
     
@@ -170,9 +170,95 @@ contract Ordering{
 contract PoD{
     
     //Declaring variables
-    Ordering public ordContract; //used to access variables and functions from the ordering contract
+    Registration public regcontract2; //used to access variables and functions from the registration contract
+    Ordering public ordcontract; //used to access variables and functions from the ordering contract
     bytes32 public vaccineLotbarcode; //A unique barcode is generated for every vaccine lot
-    bytes32 public vaccineLOTsIPFS;
+    bytes32 public vaccineLotIPFS;
+    uint public dispossedvaccineLots; 
+    uint public vaccinesperLot; //The number of vaccines per Lot
+    enum  vaccineLotState  {Manufactured, Stored, BeingShipped, Shipped, Received}
+    vaccineLotState public Lotstate; //Refers to the state of the controlled drug container
+    //enum controlleddrugstate {Prescribed, Administered, Disposed}
+
+    
+    //Events
+    
+    event VaccineLotDetails(address indexed _manufacturer, uint _ordernumber, bytes32 vaccineLotbarcode, bytes32 vaccineLotIPFS, uint vaccinesperLot);
+    event VaccineLotStored(address indexed _storagecenter, uint _ordernumber, bytes32 vaccineLotbarcode, bytes32 vaccineLotIPFS);
+    event StartShipping(address indexed _distributor, uint _ordernumber, bytes32 vaccineLotbarcode, bytes32 vaccineLotIPFS);
+    event EndShipping(address indexed _distributor, uint _ordernumber, bytes32 vaccineLotbarcode, bytes32 vaccineLotIPFS);
+    event ConfirmReception(address indexed _healthcarecenter, uint _ordernumber, bytes32 vaccineLotbarcode, bytes32 vaccineLotIPFS);
+
+    //Note: the order number is added to tell to which order this Lot belongs
+    
+    //Modifiers
+    
+    modifier onlyManufacturer{
+        
+        require(regcontract2.manufacturer(msg.sender), "Only the manufacturer is allowed to execute this function");
+        _;
+    }
+    
+    modifier onlyDistributor{
+    
+        require(regcontract2.distributor(msg.sender), "Only the distributor is allowed to execute this function");
+        _;
+    }
+    
+    modifier onlyStorageCenter{
+    
+        require(regcontract2.storagecenter(msg.sender), "Only the storage center is allowed to execute this function");
+        _;
+    }
+
+    modifier onlyhealthcarecenter{
+
+        require(regcontract2.healthcarecenter(msg.sender), "Only the healthcare center is allowed to execute this function");
+        _;
+    }
+    
+    
+    //Constructor
+    
+        constructor(address registrationaddress, address orderingaddress, bytes32 _vaccineLotbarcode, bytes32 _vaccineLotIPFS, uint _vaccinesperLot) public {
+        
+        //regcontract = Registration(registrationaddress); //links both contracts by setting the address of the registration contract
+        //regcontract.CDR();
+        regcontract2 = Registration(registrationaddress);
+        ordcontract = Ordering(orderingaddress);
+        vaccineLotbarcode = _vaccineLotbarcode;
+        vaccineLotIPFS = _vaccineLotIPFS;
+        vaccinesperLot = _vaccinesperLot;
+        Lotstate = vaccineLotState.Manufactured;
+        
+        emit VaccineLotDetails(msg.sender, ordcontract.OrderNumber(), vaccineLotbarcode, vaccineLotIPFS, vaccinesperLot); 
+
+    }
+    
+    //Functions
+    
+        function vaccineLotStored() public onlyStorageCenter{
+        require(Lotstate == vaccineLotState.Manufactured, "Can't run this function as the vaccine Lot has already been delivered or not yet manufactured");
+        Lotstate = vaccineLotState.Stored;
+        emit VaccineLotStored(msg.sender, ordcontract.OrderNumber(), vaccineLotbarcode, vaccineLotIPFS);
+    }
+        function startShipping() public onlyDistributor{
+        require(Lotstate == vaccineLotState.Manufactured || Lotstate == vaccineLotState.Stored, "Can't run this function as the vaccine Lot has already been delivered or not yet manufactured");
+        Lotstate = vaccineLotState.BeingShipped;
+        emit StartShipping(msg.sender, ordcontract.OrderNumber(), vaccineLotbarcode, vaccineLotIPFS);
+    }
+    
+        function endShipping() public onlyDistributor{
+        require(Lotstate == vaccineLotState.BeingShipped, "Can't run this function as the vaccine Lot has already been delivered already or not yet manufactured");
+        Lotstate = vaccineLotState.Shipped;
+        emit EndShipping(msg.sender, ordcontract.OrderNumber(), vaccineLotbarcode, vaccineLotIPFS);
+    }
+    
+        function confirmReception() public onlyhealthcarecenter{
+        require(Lotstate == vaccineLotState.Shipped, "Can't run this function as the vaccine Lot has already been delivered already or not yet manufactured");
+        Lotstate = vaccineLotState.Received;
+        emit EndShipping(msg.sender, ordcontract.OrderNumber(), vaccineLotbarcode, vaccineLotIPFS);
+    }
     
     
 }
