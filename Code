@@ -93,7 +93,7 @@ contract Ordering{
 
     event OrderingSCDeployer (address indexed manufacturer, uint _MaxVaccineLotAmount); //An event to show the address of the ordering SC deployer and the MaxVaccineLotAmount
     event consensusState (address indexed _address, ConsensusState _Consensus); //An event declaring the readiness of the manufacturer 
-    event placedorders(address indexed healthcarecenter, uint placedorder);
+    event placedorder(address indexed healthcarecenter, uint placedorder);
     event VaccineLotsManufactured(address indexed manufacturer, uint _ordernumber, uint _VaccineLotsProduced); //An event to confirm the manufacturing of the vaccine lots
 
     //Modifiers
@@ -124,6 +124,7 @@ contract Ordering{
         require(_PlacedOrder + PlacedOrdersCounter <= MaxVaccineLotAmount, "The specified amount exceeds the current capacity of the manufacturer");
         PlacedOrdersCounter += _PlacedOrder;
         OrderPriority[msg.sender] = true;
+        emit placedorder(msg.sender, _PlacedOrder);
         
     }
     
@@ -170,7 +171,8 @@ contract PoD{
     
     //Declaring variables
     Ordering public ordContract; //used to access variables and functions from the ordering contract
-     
+    bytes32 public vaccineLotbarcode; //A unique barcode is generated for every vaccine lot
+    bytes32 public vaccineLOTsIPFS;
     
     
 }
