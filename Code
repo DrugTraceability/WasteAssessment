@@ -15,6 +15,11 @@ contract Registration {
     //Registration Events
     
     event RegistrationSCDeployer (address indexed FDA); //An event to show the address of the registration SC deployer
+    event ManufacturerRegistered(address indexed FDA, address indexed manufacturer);
+    event StorageCenterRegistered(address indexed LocalRegulator, address indexed storagecenter);
+    event DistributorRegistered(address indexed LocalRegulator, address indexed distributor);
+    event HealthCareCenterRegistered(address indexed LocalRegulator, address indexed healthcarecenter);
+
 
     //Modifiers
     
@@ -47,24 +52,29 @@ contract Registration {
     function manufacturerRegistration (address user) public onlyFDA {
         require(manufacturer[user] == false, "The user is already registered");
         manufacturer[user] = true;
-        
+        emit ManufacturerRegistered(msg.sender, user);
+
     }
     
         
     function storagecenterRegistration (address user) public onlyLocalRegulator {
         require(storagecenter[user] == false, "The user is already registered");
         storagecenter[user] = true;
+        emit StorageCenterRegistered(msg.sender, user);
+
     }
     
     function distributorRegistration (address user) public onlyLocalRegulator {
         require(distributor[user] == false, "The user is already registered");
         distributor[user] = true;
+        emit DistributorRegistered(msg.sender, user);
     }
 
     
     function healthcarecenterRegistration (address user) public onlyLocalRegulator{
         require(healthcarecenter[user] == false, "The user is already registered");
         healthcarecenter[user] = true;
+        emit HealthCareCenterRegistered(msg.sender, user);
     }
     
 
@@ -82,7 +92,7 @@ contract Ordering{
     Registration public regcontract; //used to access variables and functions from the registration contract
     uint public StartingTime; //Used to define the starting time of deploying the ordering SC
     uint public BidsDuration; 
-    uint public DistributorsSelectionDuration;
+    uint public DistributorsCommittingDuration;
     uint public StorageCenterCommittingDuration;
     uint public MaxVaccineLotAmount; //The maximum amount of COVID-19 vaccine LOTs that the manufacturer can produce
     uint PlacedBidsCounter = 0; //Used to ensure the bids do not exceed the maximum
@@ -157,15 +167,15 @@ contract Ordering{
 
     //Constructor
     
-    constructor(address RegistrationSCaddress, uint _MaxVaccineLotAmount) public{
+    constructor(address RegistrationSCaddress, uint _MaxVaccineLotAmount) public onlymanufacturer{
         
         regcontract = Registration(RegistrationSCaddress);
         StartingTime = block.timestamp; //Now can be used as well instead of block.timestamp
         StorageCenterCommittingDuration = StartingTime + 14 * 1 days; 
-        DistributorsSelectionDuration = StartingTime + 14 * 1 days; //During this duration, the distributors will commit to fulfillng the delivery of the required amount
+        DistributorsCommittingDuration = StartingTime + 14 * 1 days; //During this duration, the distributors will commit to fulfillng the delivery of the required amount
         BidsDuration =  30 * 1 days; 
         MaxVaccineLotAmount = _MaxVaccineLotAmount;
-        emit OrderingTimeWindow(msg.sender, MaxVaccineLotAmount, BidsDuration, DistributorsSelectionDuration);
+        emit OrderingTimeWindow(msg.sender, MaxVaccineLotAmount, BidsDuration, DistributorsCommittingDuration);
     } 
     
     //Functions
@@ -185,7 +195,7 @@ contract Ordering{
     //Distributor Commitment function
     function DistributorCommitment(uint _AmountCovered) public onlyDistributor{
         require(!SelectedDistributor[msg.sender], "This distributor has already been added to the selected list");
-        require(block.timestamp <= DistributorsSelectionDuration, "New Commitments are no longer accepted as the time is over");
+        require(block.timestamp <= DistributorsCommittingDuration, "New Commitments are no longer accepted as the time is over");
         require(StorageReadiness == Readiness.Ready, "Cannot commit because the storage center is not ready");
         require(AmountCoveredCounter + _AmountCovered < MaxVaccineLotAmount || (MaxAmountBySingleDistributor == false && _AmountCovered >= MaxVaccineLotAmount), "The required amount for delivery has already been covered"); //AmountCoveredCounter or CurrentCoveredAmount?
         if(_AmountCovered < MaxVaccineLotAmount){
@@ -227,7 +237,7 @@ contract Ordering{
     
     //Placing Bids function
     function PlaceBid(uint _PlacedBid) public onlyhealthcarecenter{
-        require(block.timestamp >= StartingTime + DistributorsSelectionDuration, "Bids cannot be placed because distributors are not fully assigned yet");
+        require(block.timestamp >= StartingTime + DistributorsCommittingDuration, "Bids cannot be placed because distributors are not fully assigned yet");
         require(block.timestamp <= StartingTime + BidsDuration , "Bids can no longer be placed because bids duration is over");
         require(DistributorsReadiness == Readiness.Ready, "Cannot place bids because there aren't enough distributors");
         require(_PlacedBid + PlacedBidsCounter <= MaxVaccineLotAmount, "The specified amount exceeds the current capacity of the manufacturer");
@@ -244,33 +254,6 @@ contract Ordering{
         
     }
     
-    function OrderingAgreement() public {
-    require ((regcontract.manufacturer(msg.sender) && CurrentBids >= MaxVaccineLotAmount && CurrentCoveredAmount >= MaxVaccineLotAmount) || (regcontract.storagecenter(msg.sender) && SelectedStorageCenter[msg.sender]) || (regcontract.distributor(msg.sender) && SelectedDistributor[msg.sender]) || (regcontract.healthcarecenter(msg.sender) &&  BidderSelected[msg.sender]) , "Only authorized entities can execute this function"  );
-    require (!signed[msg.sender]);
-    require (Consensus == ConsensusState.NotReached, "Consensus already reached to start the manufacturing process" );
-    
-
-    signed[msg.sender] = true;
-    
-    
-     if(regcontract.manufacturer(msg.sender)) {   // if else statement
-         ManufacturerReadiness = Readiness.Ready;
-      } else if(regcontract.storagecenter(msg.sender)){
-         StorageReadiness = Readiness.Ready;
-      } else if(regcontract.distributor(msg.sender)){
-         distributorArray.push(msg.sender);
-      } else {
-         HealthCareCentersReadiness = Readiness.Ready;
-      }
-      
-     if(healthcarecenterArray.length*distributorArray.length*storagecenterArray.length*manufacturersArray.length > 0){ 
-         Consensus = ConsensusState.Reached;
-     }
-      
-      
-    emit consensusState (msg.sender, Consensus);
-    
-    }
     
     function BeginManufacturing(uint _ordernumber) public onlymanufacturer{
         require(StorageReadiness == Readiness.Ready && DistributorsReadiness == Readiness.Ready && HealthCareCentersReadiness == Readiness.Ready, "Manufacturing cannot be started because other entities are not ready for commitment");
