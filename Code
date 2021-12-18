@@ -5,31 +5,23 @@ pragma solidity ^0.5.17;
 
 contract Registration {
     
-    address public FDA; //Ethereum address of the FDA
-    address public LocalRegulator; //Ethereum address of local regulator
+    address public Regulator; //Ethereum address of the regulator
     mapping(address => bool) public manufacturer; //a mapping that lists all authorized manufacturers
-    mapping(address => bool) public storagecenter; //a mapping for authorized largescale storage centers
     mapping(address => bool) public distributor; //a mapping that lists all authorized distributors
-    mapping(address => bool) public healthcarecenter; //a mapping for all authorized healthcare centers
+    mapping(address => bool)  public healthcarecenter; //a mapping for all authorized healthcare centers
     
     //Registration Events
     
-    event RegistrationSCDeployer (address indexed FDA); //An event to show the address of the registration SC deployer
-    event ManufacturerRegistered(address indexed FDA, address indexed manufacturer);
-    event StorageCenterRegistered(address indexed LocalRegulator, address indexed storagecenter);
-    event DistributorRegistered(address indexed LocalRegulator, address indexed distributor);
-    event HealthCareCenterRegistered(address indexed LocalRegulator, address indexed healthcarecenter);
+    event RegistrationSCDeployer(address indexed Regulator); //An event to show the address of the registration SC deployer
+    event ManufacturerRegistered(address indexed Regulator, address indexed manufacturer);
+    event DistributorRegistered(address indexed Regulator, address indexed distributor);
+    event HealthCareCenterRegistered(address indexed Regulator, address indexed healthcarecenter);
 
 
     //Modifiers
     
-    modifier onlyFDA() {
-        require(FDA == msg.sender, "Only the FDA is eligible to run this function");
-        _;
-    }
-    
-    modifier onlyLocalRegulator {
-        require(LocalRegulator == msg.sender , "Only the Local Regulator is eligible to run this function");
+    modifier onlyRegulator() {
+        require(Regulator == msg.sender, "Only the Regulator is eligible to run this function");
         _;
     }
     
@@ -42,104 +34,82 @@ contract Registration {
 
     constructor() public {
         
-        FDA = msg.sender;
-        emit RegistrationSCDeployer(FDA);
+        Regulator = msg.sender; //The regulator is the deployer of the registration SC
+        emit RegistrationSCDeployer(Regulator);
 
     }
     
     //Registration Functions
     
-    function manufacturerRegistration (address user) public onlyFDA {
+    function manufacturerRegistration (address user) public onlyRegulator {
         require(manufacturer[user] == false, "The user is already registered");
         manufacturer[user] = true;
         emit ManufacturerRegistered(msg.sender, user);
 
     }
     
-        
-    function storagecenterRegistration (address user) public onlyLocalRegulator {
-        require(storagecenter[user] == false, "The user is already registered");
-        storagecenter[user] = true;
-        emit StorageCenterRegistered(msg.sender, user);
-
-    }
-    
-    function distributorRegistration (address user) public onlyLocalRegulator {
+    function distributorRegistration (address user) public onlyRegulator {
         require(distributor[user] == false, "The user is already registered");
         distributor[user] = true;
         emit DistributorRegistered(msg.sender, user);
     }
 
-    
-    function healthcarecenterRegistration (address user) public onlyLocalRegulator{
+    function healthcarecenterRegistration (address user) public onlyRegulator{
         require(healthcarecenter[user] == false, "The user is already registered");
         healthcarecenter[user] = true;
         emit HealthCareCenterRegistered(msg.sender, user);
     }
     
-
-    
-
     
 }
 
-//Ordering Smart contract
 
-contract Ordering{
+
+//Commitment Smart contract
+
+contract Commitment{
     
     //Declaring variables
     
     Registration public regcontract; //used to access variables and functions from the registration contract
+
+    address public TrustedOracle; // The EA of the trusted oracle that is used to signal the end of the commitment window if needed
     uint public StartingTime; //Used to define the starting time of deploying the ordering SC
-    uint public BidsDuration; 
-    uint public DistributorsCommittingDuration;
-    uint public StorageCenterCommittingDuration;
-    uint public MaxVaccineLotAmount; //The maximum amount of COVID-19 vaccine LOTs that the manufacturer can produce
-    uint PlacedBidsCounter = 0; //Used to ensure the bids do not exceed the maximum
-    uint AmountCoveredCounter = 0; //Used for the distributors
-    uint public CurrentBids;
-    uint public CurrentCoveredAmount;
-    uint public PlacedBidAmount; //Finds the individual amount of each bid
-    uint public VaccineLotAmount; //The amount of COVID-19 vaccines to be produced, should be equal to PlacedOrdersCounter
-    uint public OrderNumber; //Used by the manufacturer to distinguish the different orders
-    mapping(address => bool) public BidderSelected; //A mapping for healthcarecenters that have priority in orders
-    mapping(address => bool) public signed; //A mapping used to track which entity has agreed to proceed with covid-19 vaccine delivery/ProductionSCDeployer
-    mapping(address => bool) public SelectedDistributor; //A mapping to choose the selected distributor for delivery
-    mapping(address => bool) public SelectedStorageCenter;
-    bool public MaxAmountBySingleDistributor; //This is to check if a single distributor has committed to cover all the amount by itself
-    //bool public StorageCenterAssigned; //True if a storage center has already been selected
-    address[] public manufacturersArray;
-    address[] public distributorArray;
-    address[] public storagecenterArray;
-    address[] public healthcarecenterArray;
-    enum  ConsensusState  {NotReached, Reached}
-    ConsensusState public Consensus;
-    enum Readiness {NotReady, Ready}
-    Readiness public ManufacturerReadiness;
-    Readiness public DistributorsReadiness;
-    Readiness public StorageReadiness;
-    Readiness public HealthCareCentersReadiness;
-    mapping(address => HCPreference) public PreferredDistributor; //A mapping to choose the preferred distributor by the RegistrationSCDeployer
+    uint public CommitmentDuration; //The time window of commitment
+    uint public MaxVaccineBoxes; //The maximum amount of COVID-19 vaccine boxes that the manufacturer can produce within each Lot
+    uint public MinThreshold; //The minimum threshold that should be met for the manufacturer to accept manufacturing
+
+    mapping(address => bool) public CommittedDistributor; //A mapping to check if the distributor has already comitted to deliver the vaccine Lot
+    bool public DistributorCommitted;
+
+    mapping(address => HCPreference) public AffiliatedDistributor; //A mapping to choose the AffiliatedDistributor by the healthcare center
     struct HCPreference{
-    address pdistributor;
-    bool available;
+    address adistributor; //affiliated distributor EA
+    bool affiliated; //used to check if the distributor has already been assigned as an affiliated distributor
     } 
     
+
+    uint PlacedBidsCounter = 0; //Used to ensure the bids do not exceed the maximum
+    uint public CurrentBids;
+    mapping(address => bool) public BidderCommitted; //A mapping for healthcarecenters that have priority in orders
+
+    bool public ProductionPermission; //Used to indicate if production is approved or denied
  
 
 
     
-    //Ordering events
+    //Commitment events
 
-    event OrderingTimeWindow (address indexed manufacturer, uint _MaxVaccineLotAmount, uint _BidsDuration, uint _DistributorsSelectionDuration); //An event to show the address of the ordering SC deployer and the MaxVaccineLotAmount
-    event consensusState (address indexed _address, ConsensusState _Consensus); //An event declaring the readiness of the manufacturer 
-    event MultipleDistributorsCommitment(address indexed _distributor, uint _amountcovered, uint _CurrentCoveredAmount);
-    event SingleDistributorCommitment(address indexed _distributor, uint _amountcovered);
-    event placedbid(address indexed healthcarecenter, uint placedorder);
-    event Storagecentercommitment(address indexed storagecenter, uint availablecapacity);
+    event CommitmentDetails (address indexed _manufacturer, address indexed _vaccineLotEA, uint _MaxVaccineBoxes, uint _MinThreshold, uint _StartingTime, uint _CommitmentDuration); //An event to show the address of the commitment SC deployer and the MaxVaccineLotAmount
+    event DistributorCommitmentDetails(address indexed _distributor, address indexed _vaccineLotEA);
+    event HealthcareCenterCommitmentDetails(address indexed healthcarecenter, address indexed _vaccineLotEA, uint _placedorder);
     event VaccineLotsManufactured(address indexed manufacturer, uint indexed _ordernumber, uint _VaccineLotsProduced); //An event to confirm the manufacturing of the vaccine lots
+    event CloseCommitmentWindow(address indexed _msgsender, bytes32 _windowclosed);
+    event ProductionApproved(bytes32 _approved, uint _currentbids, address indexed _vaccineLotEA);
+    event ProductionDenied(bytes32 _denied, uint _currentbids, address indexed _vaccineLotEA);
 
-    //Modifiers
+
+    //Modifiers 
     
     modifier onlyhealthcarecenter{
 
@@ -158,221 +128,98 @@ contract Ordering{
     require(regcontract.distributor(msg.sender), "Only the distributor is allowed to execute this function");
     _;
     }
-    
-    modifier onlyStorageCenter{
 
-    require(regcontract.storagecenter(msg.sender), "Only the storage center is allowed to execute this function");
+    modifier onlyTrustedOracle{
+
+    require(TrustedOracle == msg.sender, "Only the Trusted Oracle is allowed to execute this function");
     _;
     }
+    
 
     //Constructor
     
-    constructor(address RegistrationSCaddress, uint _MaxVaccineLotAmount) public onlymanufacturer{
+    constructor(address RegistrationSCaddress, uint _MaxVaccineBoxes, uint _MinThreshold, uint _CommitmentDuration) public onlymanufacturer{
         
         regcontract = Registration(RegistrationSCaddress);
-        StartingTime = block.timestamp; //Now can be used as well instead of block.timestamp
-        StorageCenterCommittingDuration = StartingTime + 14 * 1 days; 
-        DistributorsCommittingDuration = StartingTime + 14 * 1 days; //During this duration, the distributors will commit to fulfillng the delivery of the required amount
-        BidsDuration =  30 * 1 days; 
-        MaxVaccineLotAmount = _MaxVaccineLotAmount;
-        emit OrderingTimeWindow(msg.sender, MaxVaccineLotAmount, BidsDuration, DistributorsCommittingDuration);
+        CommitmentDuration =  _CommitmentDuration * 1 days; //It's assumed that the duration is the same for both the distributors and bidders
+        MaxVaccineBoxes = _MaxVaccineBoxes;
+        MinThreshold = _MinThreshold;
+        emit CommitmentDetails(msg.sender, address(this), MaxVaccineBoxes, MinThreshold, block.timestamp, CommitmentDuration);
     } 
     
     //Functions
     
-    //Storage Center Commitment function
-    function StorageCenterCommitment(uint _StorageCapacity) public onlyStorageCenter{ //Here the available capacity is measured in Lots
-        require(!SelectedStorageCenter[msg.sender], "This Storage Center has already been added to the selected list");
-        require(StorageReadiness == Readiness.NotReady, "Another Storage Center has already been assgined");
-        require(_StorageCapacity >= MaxVaccineLotAmount, "The Storage capacity is not enough to cover all vaccine Lots");
-        require(block.timestamp <= StorageCenterCommittingDuration, "Storage center can no longer commit as the duration is over");
-        SelectedStorageCenter[msg.sender] = true;
-        //StorageCenterAssigned = true;
-        StorageReadiness = Readiness.Ready;
-        emit Storagecentercommitment(msg.sender , _StorageCapacity);
-    }
-    
     //Distributor Commitment function
-    function DistributorCommitment(uint _AmountCovered) public onlyDistributor{
-        require(!SelectedDistributor[msg.sender], "This distributor has already been added to the selected list");
-        require(block.timestamp <= DistributorsCommittingDuration, "New Commitments are no longer accepted as the time is over");
-        require(StorageReadiness == Readiness.Ready, "Cannot commit because the storage center is not ready");
-        require(AmountCoveredCounter + _AmountCovered < MaxVaccineLotAmount || (MaxAmountBySingleDistributor == false && _AmountCovered >= MaxVaccineLotAmount), "The required amount for delivery has already been covered"); //AmountCoveredCounter or CurrentCoveredAmount?
-        if(_AmountCovered < MaxVaccineLotAmount){
-            AmountCoveredCounter += _AmountCovered;
-            CurrentCoveredAmount = AmountCoveredCounter;
-            distributorArray.push(msg.sender);
-            SelectedDistributor[msg.sender] = true;
-            emit MultipleDistributorsCommitment(msg.sender, _AmountCovered, CurrentCoveredAmount); 
-            
-            if(CurrentCoveredAmount >= MaxVaccineLotAmount){ //Double check this implementation
-                DistributorsReadiness = Readiness.Ready;
-            }   
-            
-        } else if(_AmountCovered >= MaxVaccineLotAmount){
-            for (uint i=0; i<distributorArray.length; i++) {
-            SelectedDistributor[distributorArray[i]] = false;
-            //delete distributorArray[i];
-        }
-            //delete distributorArray;
-            SelectedDistributor[msg.sender] = true; //This will make the new distributor who is willing to fulfill the amount selected
-            distributorArray.push(msg.sender);
-            CurrentCoveredAmount = _AmountCovered;
-            MaxAmountBySingleDistributor = true;
-            DistributorsReadiness = Readiness.Ready;
-            emit SingleDistributorCommitment(msg.sender, _AmountCovered);
-        }
-        
-        
+    function DistributorCommitment() public onlyDistributor{
+        require(block.timestamp <= StartingTime + CommitmentDuration, "New commitments are no longer accepted as the time window is over");
+        require(DistributorCommitted == false, "The vaccine Lot has already been committed to by another distributor ");
+
+        CommittedDistributor[msg.sender] = true; //This boolean mapping is used to store the committed distributors
+        DistributorCommitted = true; //this boolean indicates that a distributor has committed to deliver the vaccine Lot
+
+        emit DistributorCommitmentDetails(msg.sender, address(this));
         
     }
+
     
-    
-    // This function is used to match the healthcare center to its prefered distributor, the mapping links the address of the HCcenter with a struct with the details of the PreferredDistributor
-    function AddPreferredDistributor (address _distributor) public onlyhealthcarecenter{ 
-        require(!PreferredDistributor[msg.sender].available, "This distributor has already been added to the preferred list");
-        PreferredDistributor[msg.sender].pdistributor = _distributor;
-        PreferredDistributor[msg.sender].available = true;
+    // This function is used to match the healthcare center to its affiliated distributor, the mapping links the address of the HCcenter with a struct with the details of the Affiliated distributor
+    function AddAffiliatedDistributor (address _distributor) public onlyhealthcarecenter{ 
+        require(!AffiliatedDistributor[msg.sender].affiliated, "This distributor has already been added to the affiliated list");
+        AffiliatedDistributor[msg.sender].adistributor = _distributor;
+        AffiliatedDistributor[msg.sender].affiliated = true;
     }
     
-    //Placing Bids function
+    //Healthcare centers commitment function
     function PlaceBid(uint _PlacedBid) public onlyhealthcarecenter{
-        require(block.timestamp >= StartingTime + DistributorsCommittingDuration, "Bids cannot be placed because distributors are not fully assigned yet");
-        require(block.timestamp <= StartingTime + BidsDuration , "Bids can no longer be placed because bids duration is over");
-        require(DistributorsReadiness == Readiness.Ready, "Cannot place bids because there aren't enough distributors");
-        require(_PlacedBid + PlacedBidsCounter <= MaxVaccineLotAmount, "The specified amount exceeds the current capacity of the manufacturer");
-        require(HealthCareCentersReadiness == Readiness.NotReady, "The maximum manufacturing capacity has already been reached");
-        require(PreferredDistributor[msg.sender].available, "Your preferred distributor is not available therefore the bid cannot be placed");
-        require(!BidderSelected[msg.sender], "This bidder has already placed a bid before");
+        require(block.timestamp <= StartingTime + CommitmentDuration , "New bids are no longer accepted as the time window is over");
+        //require(DistributorCommitted == true,"Cannot place bid because none of the distributors has committed to deliver the vaccine Lot");
+        require(CommittedDistributor[AffiliatedDistributor[msg.sender].adistributor], "The affiliated distributor with this healthcare center has not committed to deliver this vaccine Lot");
+        require(_PlacedBid + PlacedBidsCounter <= MaxVaccineBoxes, "The specified amount exceeds the maximum/remaining number of boxes within the vaccine Lot");
+        require(!BidderCommitted[msg.sender], "This healthcare center has already placed a bid before");
+
         PlacedBidsCounter += _PlacedBid;
-        CurrentBids = PlacedBidsCounter;
-        BidderSelected[msg.sender] = true; //This means the bidder has priority over other bidders based on First come first serve manner
-        if(CurrentBids >= MaxVaccineLotAmount){
-            HealthCareCentersReadiness = Readiness.Ready;
+        CurrentBids = PlacedBidsCounter; //used because the counter is not public
+        BidderCommitted[msg.sender] = true; //Used to ensure that the healthcare center does not place another bid
+
+        if(CurrentBids != MaxVaccineBoxes){
+            emit HealthcareCenterCommitmentDetails(msg.sender, address(this), _PlacedBid);
+        } else if(CurrentBids >= MaxVaccineBoxes){
+            emit HealthcareCenterCommitmentDetails(msg.sender, address(this), _PlacedBid);
+            emit CloseCommitmentWindow(msg.sender, bytes32("Commitment Window is now closed"));
+            emit ProductionApproved(bytes32("Production is approved"), CurrentBids, address(this));
+            ProductionPermission = true;
         }
-        emit placedbid(msg.sender, _PlacedBid);
+        
         
     }
-    
-    
-    function BeginManufacturing(uint _ordernumber) public onlymanufacturer{
-        require(StorageReadiness == Readiness.Ready && DistributorsReadiness == Readiness.Ready && HealthCareCentersReadiness == Readiness.Ready, "Manufacturing cannot be started because other entities are not ready for commitment");
-        OrderNumber = _ordernumber;
-        VaccineLotAmount = CurrentBids;
-        emit VaccineLotsManufactured(msg.sender, OrderNumber, VaccineLotAmount);
+
+    //TimerOracle function
+
+    function CommitmentWindowClose() public onlyTrustedOracle{
+        require(block.timestamp >= StartingTime + CommitmentDuration, "Can't announce the end of the commitment window before the time is up");
+        emit CloseCommitmentWindow(msg.sender, bytes32("Commitment Window is now closed"));
+        if(CurrentBids >= MinThreshold*MaxVaccineBoxes){
+            emit ProductionApproved(bytes32("Production is approved"), CurrentBids, address(this));
+            ProductionPermission = true;
+        } else {
+            emit ProductionDenied(bytes32("Production is denied"), CurrentBids, address(this));
+
+        }
     }
+
+    
+    //Used for testing purposes only
+    function stringToBytes32(string memory source) public pure returns (bytes32 result) {
+    bytes memory tempEmptyStringTest = bytes(source);
+    if (tempEmptyStringTest.length == 0) {
+        return 0x0;
+    }
+
+    assembly {
+        result := mload(add(source, 32))
+    }
+    }
+    
+    
 
 }
-
-//ProofOfDelivery Smart contract
-
-contract PoD{
-    
-    //Declaring variables
-    Registration public regcontract2; //used to access variables and functions from the registration contract
-    Ordering public ordcontract; //used to access variables and functions from the ordering contract
-    bytes32 public vaccineLotbarcode; //A unique barcode is generated for every vaccine lot
-    bytes32 public vaccineLotIPFS;
-    uint public dispossedvaccineLots; 
-    uint public vaccinesperLot; //The number of vaccines per Lot
-    enum  vaccineLotState  {Manufactured, Stored, BeingShipped, Shipped, Received}
-    vaccineLotState public Lotstate; //Refers to the state of the controlled drug container
-    //enum controlleddrugstate {Prescribed, Administered, Disposed}
-
-    
-    //Events
-    
-    event VaccineLotDetails(address indexed _manufacturer, uint _ordernumber, bytes32 vaccineLotbarcode, bytes32 vaccineLotIPFS, uint vaccinesperLot);
-    event VaccineLotStored(address indexed _storagecenter, uint _ordernumber, bytes32 vaccineLotbarcode, bytes32 vaccineLotIPFS);
-    event StartShipping(address indexed _distributor, uint _ordernumber, bytes32 vaccineLotbarcode, bytes32 vaccineLotIPFS);
-    event EndShipping(address indexed _distributor, uint _ordernumber, bytes32 vaccineLotbarcode, bytes32 vaccineLotIPFS);
-    event ConfirmReception(address indexed _healthcarecenter, uint _ordernumber, bytes32 vaccineLotbarcode, bytes32 vaccineLotIPFS);
-
-    //Note: the order number is added to tell to which order this Lot belongs
-    
-    //Modifiers
-    
-    modifier onlyManufacturer{
-        
-        require(regcontract2.manufacturer(msg.sender), "Only the manufacturer is allowed to execute this function");
-        _;
-    }
-    
-    modifier onlyDistributor{
-    
-        require(regcontract2.distributor(msg.sender), "Only the distributor is allowed to execute this function");
-        _;
-    }
-    
-    modifier onlyStorageCenter{
-    
-        require(regcontract2.storagecenter(msg.sender), "Only the storage center is allowed to execute this function");
-        _;
-    }
-
-    modifier onlyhealthcarecenter{
-
-        require(regcontract2.healthcarecenter(msg.sender), "Only the healthcare center is allowed to execute this function");
-        _;
-    }
-    
-    
-    //Constructor
-    
-        constructor(address registrationaddress, address orderingaddress, bytes32 _vaccineLotbarcode, bytes32 _vaccineLotIPFS, uint _vaccinesperLot) public {
-        
-        //regcontract = Registration(registrationaddress); //links both contracts by setting the address of the registration contract
-        //regcontract.CDR();
-        regcontract2 = Registration(registrationaddress);
-        ordcontract = Ordering(orderingaddress);
-        vaccineLotbarcode = _vaccineLotbarcode;
-        vaccineLotIPFS = _vaccineLotIPFS;
-        vaccinesperLot = _vaccinesperLot;
-        Lotstate = vaccineLotState.Manufactured;
-        
-        emit VaccineLotDetails(msg.sender, ordcontract.OrderNumber(), vaccineLotbarcode, vaccineLotIPFS, vaccinesperLot); 
-
-    }
-    
-    //Functions
-    
-        function vaccineLotStored() public onlyStorageCenter{
-        require(Lotstate == vaccineLotState.Manufactured, "Can't run this function as the vaccine Lot has already been delivered or not yet manufactured");
-        Lotstate = vaccineLotState.Stored;
-        emit VaccineLotStored(msg.sender, ordcontract.OrderNumber(), vaccineLotbarcode, vaccineLotIPFS);
-    }
-        function startShipping() public onlyDistributor{
-        require(Lotstate == vaccineLotState.Manufactured || Lotstate == vaccineLotState.Stored, "Can't run this function as the vaccine Lot has already been delivered or not yet manufactured");
-        Lotstate = vaccineLotState.BeingShipped;
-        emit StartShipping(msg.sender, ordcontract.OrderNumber(), vaccineLotbarcode, vaccineLotIPFS);
-    }
-    
-        function endShipping() public onlyDistributor{
-        require(Lotstate == vaccineLotState.BeingShipped, "Can't run this function as the vaccine Lot has already been delivered already or not yet manufactured");
-        Lotstate = vaccineLotState.Shipped;
-        emit EndShipping(msg.sender, ordcontract.OrderNumber(), vaccineLotbarcode, vaccineLotIPFS);
-    }
-    
-        function confirmReception() public onlyhealthcarecenter{
-        require(Lotstate == vaccineLotState.Shipped, "Can't run this function as the vaccine Lot has already been delivered already or not yet manufactured");
-        Lotstate = vaccineLotState.Received;
-        emit EndShipping(msg.sender, ordcontract.OrderNumber(), vaccineLotbarcode, vaccineLotIPFS);
-    }
-    
-    
-}
-
-
-//Proof of Consumption Smart Contract
-
-    //Declaring variables
-
-    //Events
-
-    //Modifiers
-
-    //Constructor
-
-    //Functions
-
-
