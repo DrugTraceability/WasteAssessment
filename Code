@@ -59,6 +59,7 @@ contract Commitment is KeeperCompatibleInterface {
     
     //Declaring variables
     Registration public regcontract; //used to access variables and functions from the registration contract
+    address public CommittedManufacturer; //Used later on for monitoring purposes
     uint public StartingTime; //Used to define the starting time of deploying the ordering SC
     uint public CommitmentDuration; //The time window of commitment
     bytes32 public vaccineName;
@@ -67,20 +68,20 @@ contract Commitment is KeeperCompatibleInterface {
     mapping(address => bool) public IsDistributorCommitted; //A mapping to check if the distributor has already comitted to deliver the vaccine Lot
     address public CommittedDistributor; //Used to store the address of the committed distributor
     bool public DistributorCommitted;
-    mapping(address => HCPreference) public AffiliatedDistributor; //A mapping to choose the AffiliatedDistributor by the healthcare center
+    mapping(address => HCPreference) public HCAffiliation; //A mapping to choose the affiliated distributor by the healthcare center
     struct HCPreference{
     address adistributor; //affiliated distributor EA
     bool affiliated; //used to check if the distributor has already been assigned as an affiliated distributor
     } 
     
     uint PlacedBidsCounter = 0; //Used to ensure the bids do not exceed the maximum
-    uint public CurrentBids;
+    uint public CurrentBids; //stores the number of accumulated bids
     uint public BiddersCounter = 0; //Used to store the total number of bidders
     address[] public Bidders; //an array of addresses to store the committed bidders' EAs
     mapping(address => bool) public BidderCommitted; //A mapping for healthcarecenters that have priority in orders
     mapping(address => uint) public BidderAmount; //Used to track the amount committed by each healhcarecenter
     bool public ProductionPermission; //Used to indicate if production is approved or denied
-    bool public CommitmentWindow; //Used to all the oracle to execute once only
+    bool public CommitmentWindowClosed; //Used to all the oracle to execute once only
  
     //Commitment events
     event CommitmentDetails (address indexed _manufacturer, address indexed _vaccineLotEA, bytes32 _vaccineName, uint _MaxVaccineBoxes, uint _MinThreshold, uint _StartingTime, uint _CommitmentDuration); //An event to show the address of the commitment SC deployer and the MaxVaccineLotAmount
@@ -117,6 +118,7 @@ contract Commitment is KeeperCompatibleInterface {
         MaxVaccineBoxes = _MaxVaccineBoxes;
         MinThreshold = _MinThreshold;
         StartingTime = block.timestamp;
+        CommittedManufacturer = msg.sender;
         emit CommitmentDetails(msg.sender, address(this), vaccineName, MaxVaccineBoxes, MinThreshold, StartingTime, CommitmentDuration);
     } 
     
@@ -135,15 +137,15 @@ contract Commitment is KeeperCompatibleInterface {
 
     // This function is used to match the healthcare center to its affiliated distributor, the mapping links the address of the HCcenter with a struct with the details of the Affiliated distributor
     function AddAffiliatedDistributor (address _distributor) public onlyhealthcarecenter{ 
-        require(!AffiliatedDistributor[msg.sender].affiliated, "This healthcare center already has an affiliated distributor");
-        AffiliatedDistributor[msg.sender].adistributor = _distributor;
-        AffiliatedDistributor[msg.sender].affiliated = true;
+        require(!HCAffiliation[msg.sender].affiliated, "This healthcare center already has an affiliated distributor");
+        HCAffiliation[msg.sender].adistributor = _distributor;
+        HCAffiliation[msg.sender].affiliated = true;
     }
     
     //Healthcare centers commitment function
     function PlaceBid(uint _PlacedBid) public onlyhealthcarecenter{
         require(block.timestamp <= StartingTime + CommitmentDuration , "New bids are no longer accepted as the time window is over");
-        require(IsDistributorCommitted[AffiliatedDistributor[msg.sender].adistributor], "The affiliated distributor with this healthcare center has not committed to deliver this vaccine Lot");
+        require(IsDistributorCommitted[HCAffiliation[msg.sender].adistributor], "The affiliated distributor with this healthcare center has not committed to deliver this vaccine Lot");
         require(_PlacedBid + PlacedBidsCounter <= MaxVaccineBoxes, "The specified amount exceeds the maximum/remaining number of boxes within the vaccine Lot");
         require(!BidderCommitted[msg.sender], "This healthcare center has already placed a bid before");
         PlacedBidsCounter += _PlacedBid;
@@ -159,7 +161,7 @@ contract Commitment is KeeperCompatibleInterface {
             emit HealthcareCenterCommitmentDetails(msg.sender, address(this), _PlacedBid);
             emit CloseCommitmentWindow(msg.sender, bytes32("Commitment Window is now closed"));
             emit ProductionApproved(bytes32("Production is approved"), CurrentBids, address(this));
-            CommitmentWindow = true;
+            CommitmentWindowClosed = true;
             ProductionPermission = true;
         }
         
@@ -172,14 +174,14 @@ contract Commitment is KeeperCompatibleInterface {
     }
 
     function performUpkeep(bytes calldata /* performData */) external override {
-        require(CommitmentWindow == false);
+        require(CommitmentWindowClosed == false);
         if(CurrentBids >= MinThreshold*MaxVaccineBoxes){
             emit ProductionApproved(bytes32("Production is approved"), CurrentBids, address(this));
             ProductionPermission = true;
-            CommitmentWindow = true;
+            CommitmentWindowClosed = true;
         } else {
             emit ProductionDenied(bytes32("Production is denied"), CurrentBids, address(this));
-            CommitmentWindow = true;
+            CommitmentWindowClosed = true;
         
         }
 
@@ -213,11 +215,10 @@ contract Production{
 
     //events
     event vaccineLotProduced(address indexed _manufacturer, address indexed _vaccineLotEA, bytes32 _vaccineName, bytes32 _IPFShash, uint _vaccineBoxes, uint _productionTime, uint _deliveryduration, uint _expirydate); //An event to show the details of the manufatured vaccine Lot
-    event StartDelivery (address indexed distributor, address indexed ); //The start of delivery is emitted by the distributor
-    event EnRoute (address indexed _distributor, address indexed _vaccineLotEA, bytes32 _IPFShash, uint _StartingTime); //Event indicating that the vaccine lot is being delivered
-    event ConfirmDelivery (address indexed _distributor, address indexed _vaccineLotEA, address indexed _healthcarecenter, uint _deliveredboxes,  bytes32 _IPFShash, uint _DeliveryTime); //Event confirming that the healthcare center has received the vaccine lot
-    event ConfirmReception (address indexed _healhcarecenter, address indexed _vaccineLotEA, uint _receivedboxes,  bytes32 _IPFShash, uint _ReceptionTime); //Event confirming that the healthcare center has received the vaccine lot
-    event EndDelivery (address indexed _distributor, address indexed _vaccineLotEA, uint _vaccineBoxesDelivered, bytes32 _IPFShash, uint _EndingTime); // Event declaring the end of the delivery process
+    event EnRoute(address indexed _distributor, address indexed _vaccineLotEA, bytes32 _IPFShash, uint _StartingTime); //Event indicating that the vaccine lot is being delivered
+    event ConfirmDelivery(address indexed _distributor, address indexed _vaccineLotEA, address indexed _healthcarecenter, uint _deliveredboxes,  bytes32 _IPFShash, uint _DeliveryTime); //Event confirming that the healthcare center has received the vaccine lot
+    event ConfirmReception(address indexed _healhcarecenter, address indexed _vaccineLotEA, uint _receivedboxes,  bytes32 _IPFShash, uint _ReceptionTime); //Event confirming that the healthcare center has received the vaccine lot
+    event EndDelivery(address indexed _distributor, address indexed _vaccineLotEA, uint _vaccineBoxesDelivered, bytes32 _IPFShash, uint _EndingTime); // Event declaring the end of the delivery process
 
     //Modifiers
     modifier onlyhealthcarecenter{
@@ -246,12 +247,12 @@ contract Production{
     }
 
     //Functions
-    function ProduceVaccineLot(uint _expirydurationinmonths, uint _deliverydurationindays, string memory _IPFShash) public onlymanufacturer{
+    function ProduceVaccineLot(uint _expirydurationinmonths, uint _producedboxes, uint _deliverydurationindays, string memory _IPFShash) public onlymanufacturer{
         require(Ccontract.ProductionPermission() == true, "The manufacturer does not have permission to produce the vaccine Lot");
         require(Lotstate == vaccineLotState.NotManufactured, "This vaccine Lot has already been manufactured");
         Lotstate = vaccineLotState.Manufactured; //Changing the state of the vaccine Lot to manufactured
         vaccineName = Ccontract.vaccineName();
-        vaccineBoxes = Ccontract.CurrentBids();
+        vaccineBoxes = _producedboxes;
         expirydate = block.timestamp + (_expirydurationinmonths * 30 days);
         deliveryduration = block.timestamp + (_deliverydurationindays * 1 days);
         emit vaccineLotProduced(msg.sender, vaccineLotEA, vaccineName, bytes32(bytes(_IPFShash)), vaccineBoxes, block.timestamp, deliveryduration, expirydate);
@@ -340,18 +341,20 @@ contract Consumption{
 
 }
 
-//Monitoring Smart Contract
-contract Monitoring is KeeperCompatibleInterface {
+//Waste Assessment Smart Contract
+contract WasteAssessment is KeeperCompatibleInterface {
 
     //Variables
     Registration public regcontract3; //Might not be needed Here
     Commitment public Ccontract3; 
     Production public pcontract2; 
     Consumption public Cscontract;
+    uint public excessAmount;
     uint public missingAmount;
     uint public unusedAmount;
 
     //Events
+    event ManufacturerViolation(address _manufacturer, bytes32 _msg, uint _excessAmount);
     event DistributorViolation(address _distributor, bytes32 _msg, uint _missingAmount);
     event HealthcareCenterViolation(address _healhcarecenter, bytes32 _msg, uint _unusedAmount);
 
@@ -370,6 +373,13 @@ contract Monitoring is KeeperCompatibleInterface {
     }
 
     function performUpkeep(bytes calldata /* performData */) external override {
+
+        if(pcontract2.vaccineBoxes() > Ccontract3.CurrentBids()){
+            excessAmount = pcontract2.vaccineBoxes() - Ccontract3.CurrentBids();
+            emit ManufacturerViolation(Ccontract3.CommittedManufacturer(), bytes32("Excess Amount Produced"), excessAmount);
+        }
+
+
         if(pcontract2.CurrentDeliveredBoxes() < pcontract2.vaccineBoxes()){
             missingAmount = pcontract2.vaccineBoxes() - pcontract2.CurrentDeliveredBoxes();
             emit DistributorViolation(Ccontract3.CommittedDistributor(), bytes32("Distributor Failed To Deliver"), missingAmount);
