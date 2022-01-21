@@ -468,10 +468,12 @@ contract WasteAssessment is KeeperCompatibleInterface {
         }
 
 
-        if(pcontract2.CurrentDeliveredBoxes() < pcontract2.vaccineBoxes()){
+        if(pcontract2.CurrentDeliveredBoxes() < Ccontract3.CurrentBids()){
             missingAmount = pcontract2.vaccineBoxes() - pcontract2.CurrentDeliveredBoxes();
             emit DistributorViolation(Ccontract3.CommittedDistributor(), bytes32("Distributor Failed To Deliver"), missingAmount);
         }
+
+        
 
         for(uint i = 0; i < Ccontract3.BiddersCounter(); i++){
             if(Cscontract.usedAmount(Ccontract3.Bidders(i)) < Ccontract3.BidderAmount(Ccontract3.Bidders(i))){
