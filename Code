@@ -336,7 +336,7 @@ contract Production{
     function ProduceVaccineLot(uint _expirydurationinmonths, uint _producedboxes, uint _deliverydurationindays, string memory _IPFShash) public onlymanufacturer{
         require(Ccontract.ProductionPermission() == true, "The manufacturer does not have permission to produce the vaccine Lot");
         require(Lotstate == vaccineLotState.NotManufactured, "This vaccine Lot has already been manufactured");
-        Lotstate = vaccineLotState.Manufactured; //Changing the state of the vaccine Lot to manufactured
+        Lotstate = s.Manufactured; //Changing the state of the vaccine Lot to manufactured
         vaccineName = Ccontract.vaccineName();
         vaccineBoxes = _producedboxes;
         expirydate = block.timestamp + (_expirydurationinmonths * 1 minutes); //should be 30 days but used minutes for simplicity
