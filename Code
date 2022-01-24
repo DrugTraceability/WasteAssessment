@@ -483,11 +483,7 @@ contract WasteAssessment is KeeperCompatibleInterface {
                 unusedAmount = Ccontract3.BidderAmount(Ccontract3.Bidders(i)) - Cscontract.usedAmount(Ccontract3.Bidders(i));
                 violationcounter += 1;
                 emit HealthcareCenterViolation(Ccontract3.Bidders(i), bytes32("HCcenter failed to consume"), unusedAmount);
-            } else if(Cscontract.wastedAmount(Ccontract3.Bidders(i)) > 0){
-                violationcounter += 1;
-                emit HealthcareCenterViolation(Ccontract3.Bidders(i), bytes32("HCcenter wasted vaccines"), Cscontract.wastedAmount(Ccontract3.Bidders(i)));
-            }
-            
+            } 
         }
 
         if(violationcounter == 0){
